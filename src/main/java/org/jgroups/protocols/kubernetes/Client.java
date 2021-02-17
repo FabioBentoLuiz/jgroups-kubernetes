@@ -1,11 +1,6 @@
 package org.jgroups.protocols.kubernetes;
 
-import mjson.Json;
-import org.jgroups.protocols.kubernetes.stream.StreamProvider;
-import org.jgroups.util.Util;
-
 import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
@@ -16,115 +11,21 @@ import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.openapi.models.V1PodStatus;
 import io.kubernetes.client.util.Config;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.TreeMap;
 import java.util.logging.Logger;
-
-import static org.jgroups.protocols.kubernetes.Utils.openStream;
-import static org.jgroups.protocols.kubernetes.Utils.urlencode;
 
 /**
  * @author <a href="mailto:ales.justin@jboss.org">Ales Justin</a>
  */
 public class Client {
-    protected final String              masterUrl;
-    protected final Map<String, String> headers;
-    protected final int                 connectTimeout;
-    protected final int                 readTimeout;
-    protected final int                 operationAttempts;
-    protected final long                operationSleep;
-    protected final StreamProvider      streamProvider;
-    protected final String              info;
+    
     private static final Logger log = Logger.getLogger(Client.class.getName());
 
-    public Client(String masterUrl, Map<String, String> headers, int connectTimeout, int readTimeout, int operationAttempts,
-                  long operationSleep, StreamProvider streamProvider) {
-        this.masterUrl = masterUrl;
-        this.headers = headers;
-        this.connectTimeout = connectTimeout;
-        this.readTimeout = readTimeout;
-        this.operationAttempts = operationAttempts;
-        this.operationSleep = operationSleep;
-        this.streamProvider = streamProvider;
-        Map<String, String> maskedHeaders=new TreeMap<>();
-        if (headers != null) {
-            for (Map.Entry<String, String> header : headers.entrySet()) {
-                String key = header.getKey();
-                String value = header.getValue();
-                if ("Authorization".equalsIgnoreCase(key) && value != null)
-                    value = "#MASKED:" + value.length() + "#";
-                maskedHeaders.put(key, value);
-            }
-        }
-        info=String.format("%s[masterUrl=%s, headers=%s, connectTimeout=%s, readTimeout=%s, operationAttempts=%s, " +
-                             "operationSleep=%s, streamProvider=%s]",
-                           getClass().getSimpleName(), masterUrl, maskedHeaders, connectTimeout, readTimeout,
-                           operationAttempts, operationSleep, streamProvider);
-    }
+    public Client() {
 
-    public String info() {
-        return info;
-    }
-
-    protected String fetchFromKubernetes(String op, String namespace, String labels, boolean dump_requests) throws Exception {
-        String url = masterUrl;
-        if(namespace != null && !namespace.isEmpty())
-            url = url + "/namespaces/" + urlencode(namespace);
-        url = url + "/" + op;
-        if(labels != null && !labels.isEmpty())
-            url = url + "?labelSelector=" + urlencode(labels);
-
-        InputStream stream=null;
-        String retval=null;
-        try {
-            stream=openStream(url, headers, connectTimeout, readTimeout, operationAttempts, operationSleep, streamProvider);
-            
-            retval=readContents(stream);//Util.readContents(stream);
-            System.out.println("################################### This is retval -> " + retval);
-            if(dump_requests)
-                System.out.printf("--> %s\n<-- %s\n", url, retval);
-            return retval;
-        }
-        catch(Throwable t) {
-            retval=t.getMessage();
-            if(dump_requests)
-                System.out.printf("--> %s\n<-- ERROR: %s\n", url, t.getMessage());
-            throw t;
-        }
-        finally {
-            Util.close(stream);
-        }
-    }
-
-
-
-    private String readContents(InputStream stream) {
-
-        StringBuilder textBuilder = new StringBuilder();
-        try {
-            Reader reader = new BufferedReader(new InputStreamReader
-        (stream, Charset.forName(StandardCharsets.UTF_8.name())));
-
-            int c = 0;
-            while ((c = reader.read()) != -1) {
-                textBuilder.append((char) c);
-            }
-        }catch(IOException ioe){
-            log.warning(ioe.getStackTrace().toString());
-        }
-
-        return textBuilder.toString();
     }
 
     public List<Pod> getPods(String namespace, String labels, boolean dump_requests) throws Exception {

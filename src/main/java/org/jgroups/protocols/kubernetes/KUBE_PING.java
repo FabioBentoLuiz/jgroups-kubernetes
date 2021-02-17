@@ -2,21 +2,14 @@
 package org.jgroups.protocols.kubernetes;
 
 import org.jgroups.*;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.Discovery;
 import org.jgroups.protocols.PingHeader;
-import org.jgroups.protocols.kubernetes.stream.CertificateStreamProvider;
-import org.jgroups.protocols.kubernetes.stream.StreamProvider;
-import org.jgroups.protocols.kubernetes.stream.TokenStreamProvider;
 import org.jgroups.stack.IpAddress;
 import org.jgroups.util.Promise;
 
 import java.util.*;
-import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
-import static org.jgroups.protocols.kubernetes.Utils.readFileToString;
 
 /**
  * Kubernetes based discovery protocol. Uses the Kubernetes master to fetch the
@@ -142,26 +135,9 @@ public class KUBE_PING extends Discovery {
             return; // no further initialization necessary
         }
         log.info(String.format("namespace %s set; clustering enabled", namespace));
-        Map<String, String> headers = new HashMap<>();
-        StreamProvider streamProvider;
-        if (clientCertFile != null) {
-            if (masterProtocol == null)
-                masterProtocol = "http";
-            streamProvider = new CertificateStreamProvider(clientCertFile, clientKeyFile, clientKeyPassword,
-                    clientKeyAlgo, caCertFile);
-        } else {
-            String saToken = readFileToString(saTokenFile);
-            if (saToken != null) {
-                // curl -k -H "Authorization: Bearer $(cat
-                // /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-                // https://172.30.0.2:443/api/v1/namespaces/dward/pods?labelSelector=application%3Deap-app
-                headers.put("Authorization", "Bearer " + saToken);
-            }
-            streamProvider = new TokenStreamProvider(saToken, caCertFile);
-        }
-        String url = String.format("%s://%s:%s/api/%s", masterProtocol, masterHost, masterPort, apiVersion);
-        client = new Client(url, headers, connectTimeout, readTimeout, operationAttempts, operationSleep,
-                streamProvider);
+        
+        
+        client = new Client();
         log.info("KubePING configuration: " + toString());
     }
 
@@ -184,14 +160,6 @@ public class KUBE_PING extends Discovery {
         return System.getProperty(property_name) != null || System.getenv(property_name) != null;
     }
 
-    /*private PhysicalAddress getCurrentPhysicalAddress(Address addr) {
-        return (PhysicalAddress) down(new Event(Event., addr));
-    }*/
-
-    public void findMembers(List<Address> members, boolean initial_discovery/*, Responses responses*/) {
-        
-
-    }
 
     /*@ManagedOperation(description = "Asks Kubernetes for the IP addresses of all pods")*/
     public String fetchFromKube() {
@@ -204,10 +172,8 @@ public class KUBE_PING extends Discovery {
             try {
                 return client.getPods(namespace, labels, dump_requests);
             } catch (Exception e) {
-                e.printStackTrace();
-                /*log.warning(
-                        "failed getting JSON response from Kubernetes %s for cluster [%s], namespace [%s], labels [%s]; encountered [%s: %s]",
-                        client.info(), cluster_name, namespace, labels, e.getClass().getName(), e.getMessage());*/
+                log.warning(String.format("failed getting JSON response from Kubernetes namespace [%s], labels [%s]; encountered [%s: %s]",
+                namespace, labels, e.getClass().getName(), e.getMessage()));
             }
         }
         return Collections.emptyList();
@@ -230,21 +196,10 @@ public class KUBE_PING extends Discovery {
     public void sendGetMembersRequest(Promise promise) throws Exception {
         List<Pod> pods = readAll();
         List<Address> clusterMembers = new ArrayList<>();
-        /*List<PhysicalAddress> cluster_members = new ArrayList<>(hosts != null ? hosts.size() : 16);
-        PhysicalAddress physical_addr = null;
-        PingData data = null;
-
-        physical_addr = getCurrentPhysicalAddress(local_addr);
-        // https://issues.jboss.org/browse/JGRP-1670
-        data = new PingData(local_addr, false, NameCache.get(local_addr), physical_addr);
-        if (members != null && members.size() <= max_members_in_discovery_request)
-            data.mbrs(members);*/
 
         if (pods != null) {
-            /*if (log.isTraceEnabled())
-                log.trace("%s: hosts fetched from Kubernetes: %s", local_addr, hosts);*/
             for (Pod pod : pods) {
-                if (!pod.isReady() && !useNotReadyAddresses)
+                if (!pod.isReady())// && !useNotReadyAddresses)
                     continue;
                 for (int i = 0; i <= port_range; i++) {
                     try {
@@ -258,73 +213,19 @@ public class KUBE_PING extends Discovery {
             }
         }
 
-        /*if (use_disk_cache) {
-            // this only makes sense if we have PDC below us
-            Collection<PhysicalAddress> list = (Collection<PhysicalAddress>) down_prot
-                    .down(new Event(Event.GET_PHYSICAL_ADDRESSES));
-            if (list != null)
-                list.stream().filter(phys_addr -> !cluster_members.contains(phys_addr)).forEach(cluster_members::add);
-        }
-
-        if (split_clusters_during_rolling_update) {
-            if (physical_addr != null) {
-                String senderIp = ((IpAddress) physical_addr).getIpAddress().getHostAddress();
-                // Please note we search for sender parent group through all pods, ever not
-                // ready. It's because JGroup discovery is performed
-                // before WildFly can respond to http readiness probe.
-                hosts.stream().filter(p -> p.getPodGroup() == null).forEach(p -> log.warning(
-                        "Pod %s doesn't have group assigned. Impossible to reliably determine pod group during Rolling Update."));
-
-                String senderPodGroup = hosts.stream().filter(pod -> senderIp.contains(pod.getIp()))
-                        .map(Pod::getPodGroup).findFirst().orElse(null);
-                if (senderPodGroup != null) {
-                    Set<String> allowedAddresses = hosts.stream()
-                            .filter(pod -> senderPodGroup.equals(pod.getPodGroup())).map(Pod::getIp)
-                            .collect(Collectors.toSet());
-                    for (Iterator<PhysicalAddress> memberIterator = cluster_members.iterator(); memberIterator
-                            .hasNext();) {
-                        IpAddress podAddress = (IpAddress) memberIterator.next();
-                        if (!allowedAddresses.contains(podAddress.getIpAddress().getHostAddress())) {
-                            log.trace(
-                                    "removing pod %s from cluster members list since its parent domain is different than senders (%s). Allowed hosts: %s",
-                                    podAddress, senderPodGroup, allowedAddresses);
-                            memberIterator.remove();
-                        }
-                    }
-                } else {
-                    log.warning(
-                            "split_clusters_during_rolling_update is set to 'true' but can't obtain local node parent deployment. All nodes will be placed in the same cluster.");
-                }
-            } else {
-                log.warning(
-                        "split_clusters_during_rolling_update is set to 'true' but can't obtain local node IP address. All nodes will be placed in the same cluster.");
-            }
-        }*/
-
         log.info(String.format("%s: sending discovery requests to %s", localAddress, clusterMembers));
             
-        //PingHeader hdr = new PingHeader(PingHeader.GET_MBRS_REQ, null).clusterName(cluster_name).initialDiscovery(initial_discovery);
         for (final Address addr : clusterMembers) {
             if (addr.equals(localAddress)) // no need to send the request to myself
                 continue;
 
-                final Message msg = new Message(addr, null, null);
+            final Message msg = new Message(addr, null, null);
             msg.setFlag(Message.OOB);
             msg.putHeader(name, new PingHeader(PingHeader.GET_MBRS_REQ, null));
-            // the message needs to be DONT_BUNDLE, see explanation above
-            /*final Message msg = new BytesMessage(addr)
-                    .setFlag(Message.Flag.INTERNAL, Message.Flag.DONT_BUNDLE, Message.Flag.OOB).putHeader(this.id, hdr);*/
-            /*if (data != null)
-                msg.setArray(marshal(data));
 
-            if (async_discovery_use_separate_thread_per_request)
-                timer.execute(() -> sendDiscoveryRequest(msg), sends_can_block);
-            else
-                sendDiscoveryRequest(msg);*/
+            down_prot.down(new Event(Event.MSG, msg));
 
-                down_prot.down(new Event(Event.MSG, msg));
-
-                getTransport().getTimer().execute(new Runnable() {
+            getTransport().getTimer().execute(new Runnable() {
                 public void run() {
                     try{
                         down_prot.down(new Event(Event.MSG, msg));
