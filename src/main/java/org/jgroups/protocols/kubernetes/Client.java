@@ -128,64 +128,32 @@ public class Client {
     }
 
     public List<Pod> getPods(String namespace, String labels, boolean dump_requests) throws Exception {
-        //get all pods
-
         ApiClient client = Config.defaultClient();
         Configuration.setDefaultApiClient(client);
 
         CoreV1Api api = new CoreV1Api();
         V1PodList podList = api.listPodForAllNamespaces(null, null, null, labels, null, null, null, null, null, null);
         
-        //String result = fetchFromKubernetes("pods", namespace, labels, dump_requests);
         if(podList == null || podList.getItems().size() == 0)
             return Collections.emptyList();
 
         return parsePodList(podList, namespace, labels);
     }
 
-    /**
-     * get pod group during Rolling Update
-     * @param pod - json returned by k8s
-     * @return
-     */
-    //TODO:
-    String getPodGroup(Json pod) {
-        Json meta = Optional.ofNullable(pod.at("metadata")).orElse(null);
-        Json labels = Optional.ofNullable(meta)
-                .map(podMetadata -> podMetadata.at("labels"))
-                .orElse(null);
+    
+    String getPodGroup(V1ObjectMeta podMetadata) {
+        //looks for Deployment or StatefulSet
+        List<String> groupsToLookFor = List.of("pod-template-hash", "deployment", "controller-revision-hash");
 
-        // This works for Deployment Config
-        String group = Optional.ofNullable(labels)
-                .map(l -> l.at("pod-template-hash"))
-                .map(Json::asString)
-                .orElse(null);
-
-        if (group == null) {
-            // Ok, maybe, it's a Deployment and has a valid deployment flag?
-            group = Optional.ofNullable(labels)
-                    .map(l -> l.at("deployment"))
-                    .map(Json::asString)
-                    .orElse(null);
+        for(Map.Entry<String, String> entry : podMetadata.getLabels().entrySet()){
+                    if(groupsToLookFor.contains(entry.getKey()))
+                        return entry.getValue();
         }
 
-        if (group == null) {
-            // Final check, maybe it's a StatefulSet?
-            group = Optional.ofNullable(labels)
-                    .map(l -> l.at("controller-revision-hash"))
-                    .map(Json::asString)
-                    .orElse(null);
-        }
-
-        log.info(String.format("pod %s, group %s", Optional.ofNullable(meta)
-        .map(m -> m.at("name"))
-        .map(Json::asString)
-        .orElse(null), group));
-        return group;
+        return null;
     }
 
     protected List<Pod> parsePodList(V1PodList podList, String namespace, String labels) {
-        
         List<Pod> pods=new ArrayList<>();
 
         for (V1Pod item : podList.getItems()) {
@@ -193,21 +161,18 @@ public class Client {
             if(metadata.getNamespace().equals(namespace)){
                 V1PodStatus podStatus = item.getStatus();
                 boolean running = podRunning(podStatus);
-                String parentDeployment = "deployment";//TODO: getPodGroup(obj);
+                String parentDeployment = getPodGroup(metadata);
                 pods.add(new Pod(metadata.getName(), podStatus.getPodIP(), parentDeployment, running));
             }
         }
 
         log.info(String.format("getPods(%s, %s) = %s", namespace, labels, pods));
+
         return pods;
     }
     
     
     protected boolean podRunning(V1PodStatus podStatus) {
-        if(podStatus == null) {
-            return false;
-        }
-        
         /*
          * A pod can only be considered 'running' if the following conditions are all true:
          * 1. status.phase == "Running",
@@ -252,7 +217,7 @@ public class Client {
         if(!readyCondition.booleanValue()) {
             return false;
         }
-        
+
         return true;
     }
 }
