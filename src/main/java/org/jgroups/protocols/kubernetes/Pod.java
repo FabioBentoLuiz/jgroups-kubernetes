@@ -8,12 +8,10 @@ public class Pod {
    private final String podIp;
    private final String podGroup;    // name of group of Pods during Rolling Update. There is two groups: new pods and old pods
    private final boolean isReady;
-   private final String hostIp;
 
-   public Pod(String name, String podIp, String hostIp, String podGroup, boolean isReady) {
+   public Pod(String name, String podIp, String podGroup, boolean isReady) {
       this.name = name;
       this.podIp = podIp;
-      this.hostIp = hostIp;
       this.podGroup = podGroup;
       this.isReady = isReady;
    }

@@ -192,7 +192,7 @@ public class Client {
                 V1PodStatus podStatus = item.getStatus();
                 boolean running = true;//TODO: podRunning(podStatus);
                 String parentDeployment = "deployment";//TODO: getPodGroup(obj);
-                pods.add(new Pod(metadata.getName(), podStatus.getPodIP(), podStatus.getHostIP(), parentDeployment, running));
+                pods.add(new Pod(metadata.getName(), podStatus.getPodIP(), parentDeployment, running));
                 //for(Map.Entry<String, String> entry : item.getMetadata().getLabels().entrySet()){
                    // if(entry.getKey().equals("nscale.component.name") && entry.getValue().equals("application-layer")){
                         //System.out.println(item.getMetadata().getName());
