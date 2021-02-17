@@ -128,12 +128,12 @@ public final class Utils {
             } catch (Throwable fail) {
                 lastFail = fail;
             }
-            try {
+            /*try {
                 Thread.sleep(sleep);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
-            }
+            }*/
         }
         if (lastFail != null && (throwOnFail || log.isLoggable(Level.INFO))) {
             String emsg = String.format("%s attempt(s) with a %sms sleep to execute [%s] failed. Last failure was [%s: %s]",

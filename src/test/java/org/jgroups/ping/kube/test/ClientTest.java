@@ -21,7 +21,7 @@ public class ClientTest {
         List<Pod> pods = client.getPods(null, null, false);
         Assert.assertNotNull(pods);
         assertEquals(2, pods.size());
-        String pod = pods.get(0).getIp();
+        String pod = pods.get(0).getPodIp();
         Assert.assertNotNull(pod);
     }
 

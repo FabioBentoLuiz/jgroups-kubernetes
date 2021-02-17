@@ -40,7 +40,7 @@ public class RollingUpdateTest {
             .map(e -> ((IpAddress)e.getDest()).getIpAddress().getHostAddress())
             .collect(Collectors.toSet());
       List<String> allPodsFromKubernetesApi = testedProtocol.getPods().stream()
-            .map(Pod::getIp)
+            .map(Pod::getPodIp)
             .collect(Collectors.toList());
 
       //then
@@ -81,7 +81,7 @@ public class RollingUpdateTest {
       //when
       sendInitialDiscovery(testedProtocol);
       String senderParentDeployment = testedProtocol.getPods().stream()
-            .filter(pod -> "127.0.0.1".equals(pod.getIp()))
+            .filter(pod -> "127.0.0.1".equals(pod.getPodIp()))
             .map(Pod::getPodGroup)
             .findFirst().get();
       Set<String> membersUsedForDiscovery = testedProtocol.getCollectedMessages().stream()
@@ -89,7 +89,7 @@ public class RollingUpdateTest {
               .collect(Collectors.toSet());
       List<String> allowedPodsFromKubernetesApi = testedProtocol.getPods().stream()
             .filter(pod -> senderParentDeployment.equals(pod.getPodGroup()))
-            .map(Pod::getIp)
+            .map(Pod::getPodIp)
             .collect(Collectors.toList());
 
       //then

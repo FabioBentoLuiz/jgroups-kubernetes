@@ -1,17 +1,33 @@
 package org.jgroups.protocols.kubernetes;
 
 import mjson.Json;
-import org.jgroups.logging.Log;
 import org.jgroups.protocols.kubernetes.stream.StreamProvider;
 import org.jgroups.util.Util;
 
+import io.kubernetes.client.openapi.ApiClient;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.models.V1PodStatus;
+import io.kubernetes.client.util.Config;
+
+import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.logging.Logger;
 
 import static org.jgroups.protocols.kubernetes.Utils.openStream;
 import static org.jgroups.protocols.kubernetes.Utils.urlencode;
@@ -28,10 +44,10 @@ public class Client {
     protected final long                operationSleep;
     protected final StreamProvider      streamProvider;
     protected final String              info;
-    protected final Log                 log;
+    private static final Logger log = Logger.getLogger(Client.class.getName());
 
     public Client(String masterUrl, Map<String, String> headers, int connectTimeout, int readTimeout, int operationAttempts,
-                  long operationSleep, StreamProvider streamProvider, Log log) {
+                  long operationSleep, StreamProvider streamProvider) {
         this.masterUrl = masterUrl;
         this.headers = headers;
         this.connectTimeout = connectTimeout;
@@ -39,7 +55,6 @@ public class Client {
         this.operationAttempts = operationAttempts;
         this.operationSleep = operationSleep;
         this.streamProvider = streamProvider;
-        this.log=log;
         Map<String, String> maskedHeaders=new TreeMap<>();
         if (headers != null) {
             for (Map.Entry<String, String> header : headers.entrySet()) {
@@ -72,7 +87,9 @@ public class Client {
         String retval=null;
         try {
             stream=openStream(url, headers, connectTimeout, readTimeout, operationAttempts, operationSleep, streamProvider);
-            retval=Util.readContents(stream);
+            
+            retval=readContents(stream);//Util.readContents(stream);
+            System.out.println("################################### This is retval -> " + retval);
             if(dump_requests)
                 System.out.printf("--> %s\n<-- %s\n", url, retval);
             return retval;
@@ -90,11 +107,38 @@ public class Client {
 
 
 
+    private String readContents(InputStream stream) {
+
+        StringBuilder textBuilder = new StringBuilder();
+        try {
+            Reader reader = new BufferedReader(new InputStreamReader
+        (stream, Charset.forName(StandardCharsets.UTF_8.name())));
+
+            int c = 0;
+            while ((c = reader.read()) != -1) {
+                textBuilder.append((char) c);
+            }
+        }catch(IOException ioe){
+            log.warning(ioe.getStackTrace().toString());
+        }
+
+        return textBuilder.toString();
+    }
+
     public List<Pod> getPods(String namespace, String labels, boolean dump_requests) throws Exception {
-        String result = fetchFromKubernetes("pods", namespace, labels, dump_requests);
-        if(result == null)
+        //get all pods
+
+        ApiClient client = Config.defaultClient();
+        Configuration.setDefaultApiClient(client);
+
+        CoreV1Api api = new CoreV1Api();
+        V1PodList podList = api.listPodForAllNamespaces(null, null, null, labels, null, null, null, null, null, null);
+        
+        //String result = fetchFromKubernetes("pods", namespace, labels, dump_requests);
+        if(podList == null || podList.getItems().size() == 0)
             return Collections.emptyList();
-        return parseJsonResult(result, namespace, labels);
+
+        return parsePodList(podList, namespace, labels);
     }
 
     /**
@@ -102,6 +146,7 @@ public class Client {
      * @param pod - json returned by k8s
      * @return
      */
+    //TODO:
     String getPodGroup(Json pod) {
         Json meta = Optional.ofNullable(pod.at("metadata")).orElse(null);
         Json labels = Optional.ofNullable(meta)
@@ -130,30 +175,36 @@ public class Client {
                     .orElse(null);
         }
 
-        log.debug("pod %s, group %s", Optional.ofNullable(meta)
-                .map(m -> m.at("name"))
-                .map(Json::asString)
-                .orElse(null), group);
+        log.info(String.format("pod %s, group %s", Optional.ofNullable(meta)
+        .map(m -> m.at("name"))
+        .map(Json::asString)
+        .orElse(null), group));
         return group;
     }
 
-    protected List<Pod> parseJsonResult(String input, String namespace, String labels) {
-        if(input == null)
-            return Collections.emptyList();
-        Json json=Json.read(input);
-
-        if(json == null || !json.isObject()) {
-            log.error("JSON is not a map: %s", json);
-            return Collections.emptyList();
-        }
-
-        if(!json.has("items")) {
-            log.error("JSON object is missing property \"items\": %s", json);
-            return Collections.emptyList();
-        }
-        List<Json> items=json.at("items").asJsonList();
+    protected List<Pod> parsePodList(V1PodList podList, String namespace, String labels) {
+        
         List<Pod> pods=new ArrayList<>();
-        for(Json obj: items) {
+
+        for (V1Pod item : podList.getItems()) {
+            V1ObjectMeta metadata = item.getMetadata();
+            if(metadata.getNamespace().equals(namespace)){
+                V1PodStatus podStatus = item.getStatus();
+                boolean running = true;//TODO: podRunning(podStatus);
+                String parentDeployment = "deployment";//TODO: getPodGroup(obj);
+                pods.add(new Pod(metadata.getName(), podStatus.getPodIP(), podStatus.getHostIP(), parentDeployment, running));
+                //for(Map.Entry<String, String> entry : item.getMetadata().getLabels().entrySet()){
+                   // if(entry.getKey().equals("nscale.component.name") && entry.getValue().equals("application-layer")){
+                        //System.out.println(item.getMetadata().getName());
+                        //System.out.println(item.getStatus().getHostIP());
+                    //}
+                //}
+            }
+                //System.out.println(item.getMetadata().getLabels());
+        }
+
+
+        /*for(Json obj: items) {
             String parentDeployment = getPodGroup(obj);
             String name = Optional.ofNullable(obj.at("metadata"))
                   .map(podMetadata -> podMetadata.at("name"))
@@ -168,12 +219,12 @@ public class Client {
             }
             boolean running = podRunning(podStatus);
             if(podIP == null) {
-                log.trace("Skipping pod %s since it's IP is %s", name, podIP);
+                log.info(String.format("Skipping pod %s since it's IP is %s", name, podIP));
             } else {
                 pods.add(new Pod(name, podIP, parentDeployment, running));
             }
-        }
-        log.trace("getPods(%s, %s) = %s", namespace, labels, pods);
+        }*/
+        log.info(String.format("getPods(%s, %s) = %s", namespace, labels, pods));
         return pods;
     }
     
@@ -198,11 +249,11 @@ public class Client {
          */
         // walk through each condition step by step
         // 1 status.phase
-        log.trace("Determining pod status");
+        log.info("Determining pod status");
         String phase = Optional.ofNullable(podStatus.at("phase"))
                 .map(Json::asString)
                 .orElse("not running");
-        log.trace("  status.phase=%s", phase);
+        log.info(String.format("  status.phase=%s", phase));
         if(!phase.equalsIgnoreCase("Running")) {
             return false;
         }
@@ -213,7 +264,7 @@ public class Client {
         String statusReason = Optional.ofNullable(podStatus.at("reason"))
                 .map(Json::asString)
                 .orElse(null);
-        log.trace("  status.message=%s and status.reason=%s", statusMessage, statusReason);
+        log.info(String.format("  status.message=%s and status.reason=%s", statusMessage, statusReason));
         if(statusMessage != null || statusReason != null) {
             return false;
         }
@@ -226,7 +277,7 @@ public class Client {
         for(Json containerStatus: containerStatuses) {
             ready = ready && containerStatus.at("ready").asBoolean();
         }
-        log.trace("  containerStatuses[].status of all container is %s", Boolean.toString(ready));
+        log.info(String.format("  containerStatuses[].status of all container is %s", Boolean.toString(ready)));
         if(!ready) {
             return false;
         }
@@ -237,10 +288,10 @@ public class Client {
         for(Json condition: conditions) {
             String type = condition.at("type").asString();
             if(type.equalsIgnoreCase("Ready")) {
-                readyCondition = new Boolean(condition.at("status").asString());
+                readyCondition = Boolean.parseBoolean(condition.at("status").asString());;//new Boolean(condition.at("status").asString());
             }
         }
-        log.trace(  "conditions with type==\"Ready\" has status property value = %s", readyCondition.toString());
+        log.info(String.format("conditions with type==\"Ready\" has status property value = %s", readyCondition.toString()));
         if(!readyCondition.booleanValue()) {
             return false;
         }

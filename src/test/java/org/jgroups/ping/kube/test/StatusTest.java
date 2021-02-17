@@ -20,7 +20,7 @@ public class StatusTest {
         List<Pod> pods = client.getPods(null, null, false);
         Assert.assertNotNull(pods);
         assertEquals(4, pods.size());
-        String pod = pods.get(0).getIp();
+        String pod = pods.get(0).getPodIp();
         Assert.assertNotNull(pod);
     }
     
@@ -34,7 +34,7 @@ public class StatusTest {
         assertTrue(pods.get(0).isReady());
         assertTrue(pods.get(1).isReady());
         assertFalse(pods.get(2).isReady());
-        String pod = pods.get(0).getIp();
+        String pod = pods.get(0).getPodIp();
         Assert.assertNotNull(pod);
     }
 }
