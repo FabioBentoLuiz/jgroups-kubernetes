@@ -214,7 +214,7 @@ public class KUBE_PING extends Discovery {
         }
 
         log.info(String.format("%s: sending discovery requests to %s", localAddress, clusterMembers));
-            
+        
         for (final Address addr : clusterMembers) {
             if (addr.equals(localAddress)) // no need to send the request to myself
                 continue;
@@ -225,7 +225,7 @@ public class KUBE_PING extends Discovery {
 
             down_prot.down(new Event(Event.MSG, msg));
 
-            getTransport().getTimer().execute(new Runnable() {
+            /*getTransport().getTimer().execute(new Runnable() {
                 public void run() {
                     try{
                         down_prot.down(new Event(Event.MSG, msg));
@@ -233,7 +233,12 @@ public class KUBE_PING extends Discovery {
                             log.warning(String.format("failed sending discovery request to " + addr, ex));
                     }
                 }
-            });
+            });*/
+            try{
+                down_prot.down(new Event(Event.MSG, msg));
+            }catch(Exception ex){
+                    log.warning(String.format("failed sending discovery request to " + addr, ex));
+            }
         }
 
     }
@@ -276,6 +281,7 @@ public class KUBE_PING extends Discovery {
 
     public void localAddressSet(Address addr) {
         this.localAddress = addr;
+        log.info(String.format("Local address set to %s", addr));
     }
 
 }
