@@ -2,7 +2,6 @@
 package org.jgroups.protocols.kubernetes;
 
 import org.jgroups.*;
-import org.jgroups.protocols.Discovery;
 import org.jgroups.protocols.PingHeader;
 import org.jgroups.stack.IpAddress;
 import org.jgroups.util.Promise;
@@ -21,7 +20,7 @@ import java.util.logging.Logger;
  * @author Bela Ban
  * @author Radoslav Husar
  */
-public class KUBE_PING extends Discovery {
+public class KUBE_PING extends org.jgroups.protocols.Discovery {
     protected static final short KUBERNETES_PING_ID = 2017;
     private final String name = "KUBE_PING";
     private static final Logger log = Logger.getLogger(KUBE_PING.class.getName());
@@ -119,6 +118,9 @@ public class KUBE_PING extends Discovery {
 
     protected boolean isClusteringEnabled() {
         return namespace != null;
+    }
+
+    public KUBE_PING() {
     }
 
     public void init() throws Exception {
@@ -248,17 +250,18 @@ public class KUBE_PING extends Discovery {
         return this.name;
     }
 
+    @Override
     public boolean setProperties(Properties props) {
         String str;
 
-        super.setProperties(props);
-        str=props.getProperty("namespace");              // max time to wait for initial members
+        //super.setProperties(props);
+        str=props.getProperty("namespace");          
         if(str != null) {
             namespace=str;
             props.remove("namespace");
         }
 
-        str=props.getProperty("labels");  // wait for at most n members
+        str=props.getProperty("labels");  
         if(str != null) {
             labels=str;
             props.remove("labels");
