@@ -29,7 +29,7 @@ public class KUBE_PING extends org.jgroups.protocols.Discovery {
     /*@Property(description = "Number of additional ports to be probed for membership. A port_range of 0 does not "
             + "probe additional ports. Example: initial_hosts=A[7800] port_range=0 probes A:7800, port_range=1 probes "
             + "A:7800 and A:7801")*/
-    protected int port_range = 1;
+    protected int port_range = 0;
 
     /*@Property(description = "Max time (in millis) to wait for a connection to the Kubernetes server. If exceeded, "
             + "an exception will be thrown", systemProperty = "KUBERNETES_CONNECT_TIMEOUT")*/
